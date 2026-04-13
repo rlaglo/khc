@@ -3,6 +3,8 @@ import plotly.graph_objects as go
 import asyncio
 from sim.simulator import SimulationEngine
 import numpy as np
+from sim.path_planning_dijkstra import path_from_dijkstra
+from sim.trajectory_generator import TrajectoryGenerator
 from sim.trajectories import (
     MAPS,
     build_generator_from_map,
@@ -24,6 +26,11 @@ METHODS = {
     "Smooth Only": "smooth",
     "Minimum Jerk": "jerk",
     "Minimum Snap": "snap",
+}
+
+PLANNERS = {
+    "A*": "astar",
+    "Dijkstra": "dijkstra",
 }
 
 # Styles
@@ -52,9 +59,23 @@ class State:
     def __init__(self):
         self.map_name = "Map 1"
         self.method = "jerk"
+        self.planner = "astar"
         self.fnoise = 1.0
 
 state = State()
+
+
+def build_path_with_planner(map_points: np.ndarray, planner: str) -> np.ndarray:
+    if planner == "dijkstra":
+        return path_from_dijkstra(map_points)
+    return build_path_from_map(map_points)
+
+
+def build_generator_with_planner(map_points: np.ndarray, method: str, planner: str) -> TrajectoryGenerator:
+    if planner == "dijkstra":
+        path = path_from_dijkstra(map_points)
+        return TrajectoryGenerator(path, method=method)
+    return build_generator_from_map(map_points, method)
 
 @ui.page('/')
 def main_page():
@@ -72,7 +93,7 @@ def main_page():
                 # Update the 3D plot with new map and path
                 rng = np.random.default_rng()
                 new_map_points = build_map(state.map_name, rng)
-                new_path_points = build_path_from_map(new_map_points)
+                new_path_points = build_path_with_planner(new_map_points, state.planner)
 
                 new_fig = make_initial_3d_figure(new_map_points, new_path_points)
                 new_fig.layout.uirevision = 'constant'
@@ -91,6 +112,25 @@ def main_page():
                 value=default_method,
                 label='Optimization',
                 on_change=lambda e: setattr(state, 'method', METHODS[e.value]),
+            ).classes('w-full mt-2')
+
+            default_planner = next(label for label, key in PLANNERS.items() if key == state.planner)
+
+            def on_planner_change(e):
+                state.planner = PLANNERS[e.value]
+                rng = np.random.default_rng()
+                new_map_points = build_map(state.map_name, rng)
+                new_path_points = build_path_with_planner(new_map_points, state.planner)
+
+                new_fig = make_initial_3d_figure(new_map_points, new_path_points)
+                new_fig.layout.uirevision = 'constant'
+                plot3d.update_figure(new_fig)
+
+            ui.select(
+                list(PLANNERS.keys()),
+                value=default_planner,
+                label='Planner',
+                on_change=on_planner_change,
             ).classes('w-full mt-2')
 
             ui.label('Disturbance std (N)').classes('mt-2')
@@ -119,7 +159,7 @@ def main_page():
             # Initialize with map and path
             rng = np.random.default_rng()
             initial_map_points = build_map(state.map_name, rng)
-            initial_path_points = build_path_from_map(initial_map_points)
+            initial_path_points = build_path_with_planner(initial_map_points, state.planner)
 
             fig3d = make_initial_3d_figure(initial_map_points, initial_path_points)
             plot3d = ui.plotly(fig3d).classes('w-full h-[600px]')
@@ -145,8 +185,8 @@ def main_page():
 
         rng = np.random.default_rng()
         map_points = build_map(state.map_name, rng)
-        path_points = build_path_from_map(map_points)
-        generator = build_generator_from_map(map_points, state.method)
+        path_points = build_path_with_planner(map_points, state.planner)
+        generator = build_generator_with_planner(map_points, state.method, state.planner)
         trajectory_fn = trajectory_fn_from_generator(generator)
         engine = SimulationEngine(
             trajectory_fn=trajectory_fn,

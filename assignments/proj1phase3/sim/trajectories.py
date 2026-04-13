@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .path_planning import path_from_a_star
+from .path_planning import path_from_a_star, path_from_dijkstra
 from .trajectory_generator import TrajectoryGenerator
 
 
@@ -31,6 +31,43 @@ MAPS = {
             [4.0, 9.0, 1.0],
         ]
     ),
+    "Map z": np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [2.0, 1.0, 1.0],
+            [3.0, 3.0, 2.0],
+            [3.0, 3.0, 1.0],
+            [3.0, 8.0, 5.0],
+            [3.0, 8.0, 6.0],
+            [3.0, 8.0, 8.0],
+            [3.0, 9.0, 8.0],
+            [3.0, 8.0, 9.0],
+            [3.0, 8.0, 7.0],
+            [3.0, 6.0, 5.0],
+            [2.0, 3.0, 1.0],
+            [1.0, 3.0, 1.0],
+            [4.0, 6.0, 4.0],
+            [4.0, 8.0, 4.0],
+            [4.0, 5.0, 1.0],
+            [4.0, 5.0, 2.0],
+            [4.0, 5.0, 5.0],
+            [4.0, 5.0, 8.0],
+            [4.0, 7.0, 7.0],
+            [4.0, 7.0, 3.0],
+            [4.0, 7.0, 8.0],
+            [4.0, 6.0, 7.0],
+            [4.0, 7.0, 6.0],
+            [3.0, 7.0, 7.0],
+            [3.0, 7.0, 4.0],
+            [3.0, 7.0, 5.0],
+            [4.0, 9.0, 6.0],
+            [4.0, 9.0, 9.0],
+            [4.0, 9.0, 9.0],
+            [3.0, 9.0, 7.0],
+            [4.0, 10.0, 8.0],
+            [4.0, 9.0, 8.0],
+        ]
+    ),
 }
 
 
@@ -51,29 +88,33 @@ def _map3_points(rng: np.random.Generator) -> np.ndarray:
 def build_map(map_name: str, rng: np.random.Generator | None = None) -> np.ndarray:
     if map_name in MAPS:
         return MAPS[map_name]
-    if map_name == "Map 3":
+    if map_name == "Map 3": # map3는 랜덤/
         rng = rng or np.random.default_rng()
         return _map3_points(rng)
     raise KeyError(f"Unknown map: {map_name}")
 
 
-def build_path_from_map(map_points: np.ndarray) -> np.ndarray:
-    return path_from_a_star(map_points)
+def build_path_from_map(map_points: np.ndarray, planner: str = "astar") -> np.ndarray:
+    if planner == "astar":
+        return path_from_a_star(map_points)
+    if planner == "dijkstra":
+        return path_from_dijkstra(map_points)
+    raise ValueError(f"Unknown planner: {planner}")
 
 
-def build_path(map_name: str, rng: np.random.Generator | None = None) -> np.ndarray:
+def build_path(map_name: str, rng: np.random.Generator | None = None, planner: str = "astar") -> np.ndarray:
     map_points = build_map(map_name, rng)
-    return build_path_from_map(map_points)
+    return build_path_from_map(map_points, planner)
 
-
-def build_generator_from_map(map_points: np.ndarray, method: str = "jerk") -> TrajectoryGenerator:
-    path = build_path_from_map(map_points)
+# astar로 경로 받아서 generator로 넘겨줌
+def build_generator_from_map(map_points: np.ndarray, method: str = "jerk", planner: str = "astar") -> TrajectoryGenerator:
+    path = build_path_from_map(map_points, planner)
     return TrajectoryGenerator(path, method=method)
 
 
-def build_generator(map_name: str, method: str = "jerk", rng: np.random.Generator | None = None) -> TrajectoryGenerator:
+def build_generator(map_name: str, method: str = "jerk", rng: np.random.Generator | None = None, planner: str = "astar") -> TrajectoryGenerator:
     map_points = build_map(map_name, rng)
-    return build_generator_from_map(map_points, method)
+    return build_generator_from_map(map_points, method, planner)
 
 
 def trajectory_fn_from_generator(generator: TrajectoryGenerator):

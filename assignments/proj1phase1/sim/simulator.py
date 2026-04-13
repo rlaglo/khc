@@ -19,6 +19,15 @@ class SimulationResult:
     rmse_vel: float | None = None
     rmse_yaw_deg: float | None = None
     smoothness: float | None = None
+    # [ADDED] Controller gains stored in results for plot annotations and analysis
+    kp_pos: np.ndarray | None = None
+    kd_pos: np.ndarray | None = None
+    kp_angle: np.ndarray | None = None
+    kd_angle: np.ndarray | None = None
+    forces: np.ndarray | None = None
+    moments: np.ndarray | None = None
+    mass: float | None = None
+    grav: float | None = None
 
 
 def initial_state() -> np.ndarray:
@@ -60,6 +69,7 @@ class SimulationEngine:
         control_step: float = 0.01,
         fnoise: float = 1.0,
         seed: int | None = None,
+        controller: Controller | None = None,
     ) -> None:
         self.trajectory_fn = trajectory_fn
         self.params = params or QuadParams()
@@ -74,7 +84,7 @@ class SimulationEngine:
             raise ValueError("control_step must be an integer multiple of t_step")
 
         self._rng = np.random.default_rng(self.seed)
-        self.controller = Controller(self.params)
+        self.controller = controller if controller is not None else Controller(self.params)
         self.reset()
 
     def reset(self) -> None:
@@ -158,6 +168,15 @@ class SimulationEngine:
             rmse_vel=rmse_vel,
             rmse_yaw_deg=rmse_yaw_deg,
             smoothness=smoothness,
+            # [ADDED] Store controller gains for plotting and optimization tracking
+            kp_pos=self.controller.Kp_pos.copy(),
+            kd_pos=self.controller.Kd_pos.copy(),
+            kp_angle=self.controller.Kp_angle.copy(),
+            kd_angle=self.controller.Kd_angle.copy(),
+            forces=np.array(self._forces),
+            moments=np.array(self._moments),
+            mass=self.params.mass,
+            grav=self.params.grav,
         )
 
 

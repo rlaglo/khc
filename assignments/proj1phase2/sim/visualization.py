@@ -270,7 +270,8 @@ def make_rpy_plot(result: SimulationResult, g: float = 9.81) -> go.Figure:
         return fig
 
     desired_acc = result.desired[:, 6:9]
-    desired_yaw = result.desired[:, 9]
+    yaw_idx = 15 if result.desired.shape[1] >= 16 else 9
+    desired_yaw = result.desired[:, yaw_idx]
     psi = result.rpy[:, 2]
     phi_des = (desired_acc[:, 0] * np.sin(psi) - desired_acc[:, 1] * np.cos(psi)) / g
     theta_des = (desired_acc[:, 0] * np.cos(psi) + desired_acc[:, 1] * np.sin(psi)) / g
@@ -394,6 +395,174 @@ def make_position_plot(result: SimulationResult) -> go.Figure:
         title="World Position (m)",
         xaxis_title="Time (s)",
         yaxis_title="m",
+        margin=dict(l=30, r=10, t=40, b=30),
+        legend=dict(orientation="h"),
+    )
+    return fig
+
+
+def make_energy_plot(result: SimulationResult) -> go.Figure:
+    """시간에 따른 제어 입력(Thrust) 및 제어 노력 시계열 플롯 생성"""
+    if result.forces is None:
+        return go.Figure().update_layout(title="No force data available")
+
+    # 제어 노력의 피적분 함수인 Thrust^2를 시각화합니다.
+    energy_inst = result.forces**2
+    
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=result.times, y=energy_inst, name="Thrust^2", line=dict(color="#9467bd"))
+    )
+    
+    fig.update_layout(
+        title="Control Effort (Thrust Squared)",
+        xaxis_title="Time (s)",
+        yaxis_title="N²",
+        margin=dict(l=30, r=10, t=40, b=30),
+        legend=dict(orientation="h"),
+        template="plotly_white"
+    )
+    return fig
+
+def make_angular_velocity_plot(result: SimulationResult) -> go.Figure:
+    """기체 좌표계 기준 각속도 p, q, r 시계열 플롯 생성"""
+    # states의 10, 11, 12번 인덱스는 각각 p, q, r (rad/s) 입니다.
+    p_rate = result.states[:, 10]
+    q_rate = result.states[:, 11]
+    r_rate = result.states[:, 12]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=result.times, y=p_rate, name="p (roll rate)", line=dict(color="#e377c2")))
+    fig.add_trace(go.Scatter(x=result.times, y=q_rate, name="q (pitch rate)", line=dict(color="#7f7f7f")))
+    fig.add_trace(go.Scatter(x=result.times, y=r_rate, name="r (yaw rate)", line=dict(color="#bcbd22")))
+    
+    fig.update_layout(
+        title="Body Angular Velocity (rad/s)",
+        xaxis_title="Time (s)",
+        yaxis_title="rad/s",
+        margin=dict(l=30, r=10, t=40, b=30),
+        legend=dict(orientation="h"),
+        template="plotly_white"
+    )
+    return fig
+
+
+def make_acceleration_plot(result: SimulationResult) -> go.Figure:
+    """Create true acceleration plot from simulated velocity."""
+    if len(result.times) < 2:
+        fig = make_subplots(rows=1, cols=1)
+        fig.update_layout(
+            title="True Acceleration (m/s^2)",
+            xaxis_title="Time (s)",
+            yaxis_title="m/s^2",
+            margin=dict(l=30, r=10, t=40, b=30),
+            legend=dict(orientation="h"),
+        )
+        return fig
+
+    vel = result.states[:, 3:6]
+    dt = float(np.mean(np.diff(result.times)))
+    if dt <= 0.0:
+        acc = np.zeros_like(vel)
+    else:
+        acc = np.zeros_like(vel)
+        acc[:, 0] = np.gradient(vel[:, 0], dt)
+        acc[:, 1] = np.gradient(vel[:, 1], dt)
+        acc[:, 2] = np.gradient(vel[:, 2], dt)
+
+    fig = make_subplots(rows=1, cols=1)
+    fig.add_trace(go.Scatter(x=result.times, y=acc[:, 0], name="Ax", line=dict(color="#1f77b4")))
+    fig.add_trace(go.Scatter(x=result.times, y=acc[:, 1], name="Ay", line=dict(color="#2ca02c")))
+    fig.add_trace(go.Scatter(x=result.times, y=acc[:, 2], name="Az", line=dict(color="#d62728")))
+    fig.update_layout(
+        title="True Acceleration (m/s^2)",
+        xaxis_title="Time (s)",
+        yaxis_title="m/s^2",
+        margin=dict(l=30, r=10, t=40, b=30),
+        legend=dict(orientation="h"),
+    )
+    return fig
+
+
+def make_jerk_plot(result: SimulationResult) -> go.Figure:
+    """Create true jerk plot from simulated acceleration."""
+    if len(result.times) < 2:
+        fig = make_subplots(rows=1, cols=1)
+        fig.update_layout(
+            title="True Jerk (m/s^3)",
+            xaxis_title="Time (s)",
+            yaxis_title="m/s^3",
+            margin=dict(l=30, r=10, t=40, b=30),
+            legend=dict(orientation="h"),
+        )
+        return fig
+
+    vel = result.states[:, 3:6]
+    dt = float(np.mean(np.diff(result.times)))
+    if dt <= 0.0:
+        jerk_x = np.zeros_like(vel[:, 0])
+        jerk_y = np.zeros_like(vel[:, 1])
+        jerk_z = np.zeros_like(vel[:, 2])
+    else:
+        acc_x = np.gradient(vel[:, 0], dt)
+        acc_y = np.gradient(vel[:, 1], dt)
+        acc_z = np.gradient(vel[:, 2], dt)
+        jerk_x = np.gradient(acc_x, dt)
+        jerk_y = np.gradient(acc_y, dt)
+        jerk_z = np.gradient(acc_z, dt)
+
+    fig = make_subplots(rows=1, cols=1)
+    fig.add_trace(go.Scatter(x=result.times, y=jerk_x, name="Jx", line=dict(color="#1f77b4")))
+    fig.add_trace(go.Scatter(x=result.times, y=jerk_y, name="Jy", line=dict(color="#2ca02c")))
+    fig.add_trace(go.Scatter(x=result.times, y=jerk_z, name="Jz", line=dict(color="#d62728")))
+    fig.update_layout(
+        title="True Jerk (m/s^3)",
+        xaxis_title="Time (s)",
+        yaxis_title="m/s^3",
+        margin=dict(l=30, r=10, t=40, b=30),
+        legend=dict(orientation="h"),
+    )
+    return fig
+
+
+def make_snap_plot(result: SimulationResult) -> go.Figure:
+    """Create true snap plot from simulated jerk."""
+    if len(result.times) < 2:
+        fig = make_subplots(rows=1, cols=1)
+        fig.update_layout(
+            title="True Snap (m/s^4)",
+            xaxis_title="Time (s)",
+            yaxis_title="m/s^4",
+            margin=dict(l=30, r=10, t=40, b=30),
+            legend=dict(orientation="h"),
+        )
+        return fig
+
+    vel = result.states[:, 3:6]
+    dt = float(np.mean(np.diff(result.times)))
+    if dt <= 0.0:
+        snap_x = np.zeros_like(vel[:, 0])
+        snap_y = np.zeros_like(vel[:, 1])
+        snap_z = np.zeros_like(vel[:, 2])
+    else:
+        acc_x = np.gradient(vel[:, 0], dt)
+        acc_y = np.gradient(vel[:, 1], dt)
+        acc_z = np.gradient(vel[:, 2], dt)
+        jerk_x = np.gradient(acc_x, dt)
+        jerk_y = np.gradient(acc_y, dt)
+        jerk_z = np.gradient(acc_z, dt)
+        snap_x = np.gradient(jerk_x, dt)
+        snap_y = np.gradient(jerk_y, dt)
+        snap_z = np.gradient(jerk_z, dt)
+
+    fig = make_subplots(rows=1, cols=1)
+    fig.add_trace(go.Scatter(x=result.times, y=snap_x, name="Sx", line=dict(color="#1f77b4")))
+    fig.add_trace(go.Scatter(x=result.times, y=snap_y, name="Sy", line=dict(color="#2ca02c")))
+    fig.add_trace(go.Scatter(x=result.times, y=snap_z, name="Sz", line=dict(color="#d62728")))
+    fig.update_layout(
+        title="True Snap (m/s^4)",
+        xaxis_title="Time (s)",
+        yaxis_title="m/s^4",
         margin=dict(l=30, r=10, t=40, b=30),
         legend=dict(orientation="h"),
     )

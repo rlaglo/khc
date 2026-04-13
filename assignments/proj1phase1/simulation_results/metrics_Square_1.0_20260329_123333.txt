@@ -1,0 +1,20 @@
+SIMULATION RESULTS
+==================================================
+
+Trajectory: Square
+Disturbance (fnoise): 1.0 N
+Simulation Time: 25.010 s
+
+METRICS simple pd
+--------------------------------------------------
+RMSE Position: 0.0269 m
+RMSE Velocity: 0.1230 m/s
+RMSE Yaw: 3.945 deg
+Smoothness: 0.120
+
+CONTROLLER GAINS
+--------------------------------------------------
+Kp_pos (Position P):  [10.00, 10.00, 15.00]
+Kd_pos (Position D):  [5.00, 5.00, 8.00]
+Kp_angle (Angle P):   [100.00, 100.00, 100.00]
+Kd_angle (Angle D):   [10.00, 10.00, 10.00]

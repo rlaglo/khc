@@ -3,8 +3,11 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+# [ADDED] Imports for saving simulation results with gain values
+from pathlib import Path
+from datetime import datetime
 
-from .math_utils import wrap_to_pi
+from .math_utils import quaternion_to_R, wrap_to_pi
 from .simulator import SimulationResult
 
 
@@ -398,3 +401,201 @@ def make_position_plot(result: SimulationResult) -> go.Figure:
         legend=dict(orientation="h"),
     )
     return fig
+
+
+def make_control_plot(result: SimulationResult) -> go.Figure:
+    """Create control input magnitude plot: total thrust, gravity-compensated thrust, and moment norm."""
+    fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
+    thrust = np.zeros(len(result.times))
+    moment_norm = np.zeros(len(result.times))
+    if result.forces is not None:
+        thrust = np.asarray(result.forces).ravel()
+    if result.moments is not None:
+        moment_norm = np.linalg.norm(np.asarray(result.moments), axis=1)
+
+    mass = result.mass if result.mass is not None else 0.5
+    grav = result.grav if result.grav is not None else 9.81
+    gravity_thrust = mass * grav
+
+    vertical_thrust = np.zeros(len(result.times))
+    if result.states.shape[0] > 0 and result.forces is not None:
+        quats = result.states[:, 6:10]
+        z_axes = np.array([quaternion_to_R(q)[2, 2] for q in quats])
+        vertical_thrust = thrust * z_axes
+
+    net_vertical_force = vertical_thrust - gravity_thrust
+
+    fig.add_trace(
+        go.Scatter(
+            x=result.times,
+            y=thrust,
+            name="Total Thrust F",
+            line=dict(color="#1f77b4"),
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=result.times,
+            y=vertical_thrust,
+            name="World-Z Thrust F_z",
+            line=dict(color="#2ca02c", dash="dash"),
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=result.times,
+            y=[gravity_thrust] * len(result.times),
+            name="Gravity Thrust mg",
+            line=dict(color="#9467bd", dash="dot"),
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=result.times,
+            y=net_vertical_force,
+            name="Net Vertical Force F_z - mg",
+            line=dict(color="#8c564b", dash="dot"),
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=result.times,
+            y=moment_norm,
+            name="Moment |M|",
+            line=dict(color="#ff7f0e"),
+        ),
+        secondary_y=True,
+    )
+    fig.update_layout(
+        title="Control Inputs",
+        xaxis_title="Time (s)",
+        margin=dict(l=30, r=10, t=40, b=30),
+        legend=dict(orientation="h"),
+    )
+    fig.update_yaxes(title_text="Thrust (N)", secondary_y=False)
+    fig.update_yaxes(title_text="Moment Norm (N·m)", secondary_y=True)
+    return fig
+
+
+# [ADDED] Helper functions for gain visualization and saving
+
+def _get_gains_annotation(result: SimulationResult) -> str:
+    """Generate text annotation with controller gain values."""
+    gains_text = "Controller Gains:\n"
+    gains_text += f"Kp_pos: [{result.kp_pos[0]:.2f}, {result.kp_pos[1]:.2f}, {result.kp_pos[2]:.2f}]\n"
+    gains_text += f"Kd_pos: [{result.kd_pos[0]:.2f}, {result.kd_pos[1]:.2f}, {result.kd_pos[2]:.2f}]\n"
+    gains_text += f"Kp_angle: [{result.kp_angle[0]:.2f}, {result.kp_angle[1]:.2f}, {result.kp_angle[2]:.2f}]\n"
+    gains_text += f"Kd_angle: [{result.kd_angle[0]:.2f}, {result.kd_angle[1]:.2f}, {result.kd_angle[2]:.2f}]"
+    return gains_text
+
+
+def _add_gains_annotation_to_figure(fig: go.Figure, result: SimulationResult) -> None:
+    """Add controller gains annotation to figure."""
+    gains_text = _get_gains_annotation(result)
+    fig.add_annotation(
+        text=gains_text,
+        xref="paper", yref="paper",
+        x=0.02, y=0.98,
+        showarrow=False,
+        font=dict(size=10, family="monospace"),
+        bgcolor="rgba(255, 255, 255, 0.8)",
+        bordercolor="black",
+        borderwidth=1,
+        align="left",
+        xanchor="left",
+        yanchor="top",
+    )
+
+
+# [ADDED] Function to save all simulation plots with gains to HTML files
+
+def save_simulation_results(
+    result: SimulationResult,
+    result_dir: str | Path = "./simulation_results",
+    trajectory_name: str = "trajectory",
+    fnoise: float = 1.0,
+) -> dict[str, str]:
+    """
+    Save all simulation plots with gain values as HTML files.
+    
+    Args:
+        result: SimulationResult containing all simulation data
+        result_dir: Directory to save results
+        trajectory_name: Name of the trajectory for file naming
+        fnoise: Noise standard deviation for file naming
+        
+    Returns:
+        Dictionary with save paths for each plot
+    """
+    result_dir = Path(result_dir)
+    result_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create timestamp for unique filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Create all plots
+    fig_3d = make_3d_trajectory_plot(result, len(result.times) - 1)
+    fig_rpy = make_rpy_plot(result)
+    fig_vel = make_velocity_plot(result)
+    fig_pos = make_position_plot(result)
+    fig_control = make_control_plot(result)
+
+    # Add gains annotations to all figures
+    for fig in [fig_3d, fig_rpy, fig_vel, fig_pos, fig_control]:
+        _add_gains_annotation_to_figure(fig, result)
+
+    # Save figures
+    file_paths = {}
+
+    filename_3d = f"3d_trajectory_{trajectory_name}_{fnoise:.1f}_{timestamp}.html"
+    file_paths["3d_trajectory"] = str(result_dir / filename_3d)
+    fig_3d.write_html(file_paths["3d_trajectory"])
+
+    filename_rpy = f"attitude_{trajectory_name}_{fnoise:.1f}_{timestamp}.html"
+    file_paths["attitude"] = str(result_dir / filename_rpy)
+    fig_rpy.write_html(file_paths["attitude"])
+    
+    filename_vel = f"velocity_{trajectory_name}_{fnoise:.1f}_{timestamp}.html"
+    file_paths["velocity"] = str(result_dir / filename_vel)
+    fig_vel.write_html(file_paths["velocity"])
+    
+    filename_pos = f"position_{trajectory_name}_{fnoise:.1f}_{timestamp}.html"
+    file_paths["position"] = str(result_dir / filename_pos)
+    fig_pos.write_html(file_paths["position"])
+
+    filename_control = f"control_inputs_{trajectory_name}_{fnoise:.1f}_{timestamp}.html"
+    file_paths["control_inputs"] = str(result_dir / filename_control)
+    fig_control.write_html(file_paths["control_inputs"])
+    
+    # Save metrics and gains to a text file
+    metrics_filename = f"metrics_{trajectory_name}_{fnoise:.1f}_{timestamp}.txt"
+    metrics_path = result_dir / metrics_filename
+    
+    with open(metrics_path, 'w') as f:
+        f.write("SIMULATION RESULTS\n")
+        f.write("=" * 50 + "\n\n")
+        f.write(f"Trajectory: {trajectory_name}\n")
+        f.write(f"Disturbance (fnoise): {fnoise:.1f} N\n")
+        f.write(f"Simulation Time: {result.times[-1]:.3f} s\n\n")
+        
+        f.write("METRICS\n")
+        f.write("-" * 50 + "\n")
+        f.write(f"RMSE Position: {result.rmse_pos:.4f} m\n")
+        f.write(f"RMSE Velocity: {result.rmse_vel:.4f} m/s\n")
+        f.write(f"RMSE Yaw: {result.rmse_yaw_deg:.3f} deg\n")
+        f.write(f"Smoothness: {result.smoothness:.3f}\n\n")
+        
+        f.write("CONTROLLER GAINS\n")
+        f.write("-" * 50 + "\n")
+        f.write(f"Kp_pos (Position P):  [{result.kp_pos[0]:.2f}, {result.kp_pos[1]:.2f}, {result.kp_pos[2]:.2f}]\n")
+        f.write(f"Kd_pos (Position D):  [{result.kd_pos[0]:.2f}, {result.kd_pos[1]:.2f}, {result.kd_pos[2]:.2f}]\n")
+        f.write(f"Kp_angle (Angle P):   [{result.kp_angle[0]:.2f}, {result.kp_angle[1]:.2f}, {result.kp_angle[2]:.2f}]\n")
+        f.write(f"Kd_angle (Angle D):   [{result.kd_angle[0]:.2f}, {result.kd_angle[1]:.2f}, {result.kd_angle[2]:.2f}]\n")
+    
+    file_paths["metrics"] = str(metrics_path)
+    
+    return file_paths

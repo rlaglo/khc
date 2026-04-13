@@ -1,0 +1,20 @@
+SIMULATION RESULTS
+==================================================
+
+Trajectory: Circle
+Disturbance (fnoise): 3.0 N
+Simulation Time: 25.010 s
+
+METRICS pd only
+--------------------------------------------------
+RMSE Position: 0.0787 m
+RMSE Velocity: 0.3193 m/s
+RMSE Yaw: 3.123 deg
+Smoothness: 0.320
+
+CONTROLLER GAINS
+--------------------------------------------------
+Kp_pos (Position P):  [10.00, 10.00, 15.00]
+Kd_pos (Position D):  [5.00, 5.00, 8.00]
+Kp_angle (Angle P):   [100.00, 100.00, 100.00]
+Kd_angle (Angle D):   [10.00, 10.00, 10.00]
